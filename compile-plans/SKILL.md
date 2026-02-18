@@ -68,7 +68,7 @@ Plan Tasks already contain structured metadata. **Extract directly - do not fabr
 ### Line 1: Metadata
 
 ```json
-{"type":"meta","plan":"<Feature Name>","goal":"<from plan header>","tech_stack":"<from plan header>","execution_context":{"worktree_path":"<from header>","branch":"<from header>","base_branch":"<from header>"},"source":"docs/plans/YYYY-MM-DD-<feature-name>.md","total_issues":<N>}
+{"type":"meta","schema_version":1,"plan":"<Feature Name>","goal":"<from plan header>","tech_stack":"<from plan header>","execution_context":{"worktree_path":"<from header>","branch":"<from header>","base_branch":"<from header>"},"source":"docs/plans/YYYY-MM-DD-<feature-name>.md","total_issues":<N>}
 ```
 
 ### Lines 2+: Issue Lines
@@ -124,6 +124,14 @@ One JSON object per line. Field definitions:
 | `owner` | string | yes | Assignee (default empty, filled after meeting) |
 | `refs` | array | yes | Reference list, `["path:start_line-end_line", ...]`, pointing to plan lines |
 | `notes` | string | yes | Free-form notes (default empty) |
+
+### Schema Version History
+
+| Version | Date | Changes |
+|---------|------|---------|
+| 1 | 2026-02-18 | Initial schema — 19 required issue fields, meta with `execution_context` |
+
+**Backward compatibility:** The health checker treats a missing `schema_version` as a warning (not an error) so that JSONL files created before this field was introduced remain valid. However, all **new** JSONL files must include `schema_version`. Unknown or non-integer versions are errors.
 
 ### ID Rules
 
@@ -198,7 +206,7 @@ Combine and extract from the plan Task's `**Files:**` and `**Step:**` sections:
 ## 10. Full Example
 
 ```jsonl
-{"type":"meta","plan":"User Auth","goal":"Add JWT authentication to the API","tech_stack":"Python, FastAPI, PyJWT","execution_context":{"worktree_path":"/repo-auth","branch":"feature/auth","base_branch":"main"},"source":"docs/plans/2024-01-15-user-auth.md","total_issues":3}
+{"type":"meta","schema_version":1,"plan":"User Auth","goal":"Add JWT authentication to the API","tech_stack":"Python, FastAPI, PyJWT","execution_context":{"worktree_path":"/repo-auth","branch":"feature/auth","base_branch":"main"},"source":"docs/plans/2024-01-15-user-auth.md","total_issues":3}
 {"id":"AUTH-010","priority":"P0","phase":1,"area":"backend","title":"JWT Token Generation","description":"Implement generate_token and verify_token using PyJWT with HS256; tokens carry user_id claim and configurable expiry","depends_on":[],"acceptance_criteria":"generate_token(user_id) returns valid JWT; verify_token decodes correctly; expired tokens raise ExpiredTokenError","test_approach":"pytest tests/auth/test_jwt.py - generation, verification, expiry edge cases","review_initial_requirements":"Secret key from env var not hardcoded; token expiry configurable; no PII in payload","review_regression_requirements":"All auth-dependent endpoints still pass after token format changes","dev_state":"pending","review_initial_state":"pending","review_regression_state":"pending","git_state":"uncommitted","blocked":false,"owner":"","refs":["docs/plans/2024-01-15-user-auth.md:12-88"],"notes":""}
 {"id":"AUTH-020","priority":"P0","phase":2,"area":"backend","title":"Auth Middleware","description":"FastAPI dependency that extracts JWT from Authorization header and injects current_user into request","depends_on":["AUTH-010"],"acceptance_criteria":"Missing token returns 401; invalid token returns 401; valid token injects user_id into request state","test_approach":"pytest tests/auth/test_middleware.py - missing token, invalid token, valid token, expired token scenarios","review_initial_requirements":"Consistent error response format; no stack trace leakage; middleware order documented","review_regression_requirements":"Public endpoints still accessible without token; rate limiting unaffected","dev_state":"pending","review_initial_state":"pending","review_regression_state":"pending","git_state":"uncommitted","blocked":false,"owner":"","refs":["docs/plans/2024-01-15-user-auth.md:90-165"],"notes":""}
 {"id":"AUTH-030","priority":"P1","phase":3,"area":"backend","title":"Protected Route Integration","description":"Apply auth middleware to all /api/v1/users/* endpoints and update OpenAPI schema","depends_on":["AUTH-020"],"acceptance_criteria":"All protected endpoints return 401 without token; 200 with valid token; OpenAPI docs show security scheme","test_approach":"pytest tests/auth/test_routes.py - integration tests with real middleware chain","review_initial_requirements":"Backward-compatible with existing API clients during migration; deprecation headers if needed","review_regression_requirements":"Full endpoint matrix tested; no unprotected admin routes","dev_state":"pending","review_initial_state":"pending","review_regression_state":"pending","git_state":"uncommitted","blocked":false,"owner":"","refs":["docs/plans/2024-01-15-user-auth.md:167-230"],"notes":""}

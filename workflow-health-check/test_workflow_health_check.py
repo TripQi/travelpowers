@@ -951,6 +951,113 @@ class TestCheckIssues:
         report = whc.check_issues(p, tmp_path)
         assert report.errors >= 1
 
+    # --- Schema Version Tests ---
+
+    @patch("workflow_health_check.detect_git_branch", return_value="main")
+    def test_schema_version_missing_is_warn(self, _mock_git: MagicMock, tmp_path: Path) -> None:
+        ref_file = tmp_path / "src" / "main.py"
+        ref_file.parent.mkdir(parents=True, exist_ok=True)
+        ref_file.write_text("# source", encoding="utf-8")
+
+        meta = _make_meta(source="src/main.py")
+        # Ensure no schema_version key
+        meta.pop("schema_version", None)
+        issue = _make_issue(refs=["src/main.py:1-10"])
+        p = _write_jsonl(tmp_path, meta, [issue])
+        report = whc.check_issues(p, tmp_path)
+        sv_findings = [
+            f for f in report.findings if "schema_version" in f.message.lower()
+        ]
+        assert len(sv_findings) >= 1
+        assert all(f.severity == "WARN" for f in sv_findings)
+
+    @patch("workflow_health_check.detect_git_branch", return_value="main")
+    def test_schema_version_known_passes(self, _mock_git: MagicMock, tmp_path: Path) -> None:
+        ref_file = tmp_path / "src" / "main.py"
+        ref_file.parent.mkdir(parents=True, exist_ok=True)
+        ref_file.write_text("# source", encoding="utf-8")
+
+        meta = _make_meta(source="src/main.py", schema_version=1)
+        issue = _make_issue(refs=["src/main.py:1-10"])
+        p = _write_jsonl(tmp_path, meta, [issue])
+        report = whc.check_issues(p, tmp_path)
+        sv_findings = [
+            f for f in report.findings if "schema_version" in f.message.lower()
+        ]
+        assert len(sv_findings) == 0
+
+    @patch("workflow_health_check.detect_git_branch", return_value="main")
+    def test_schema_version_unknown_is_error(self, _mock_git: MagicMock, tmp_path: Path) -> None:
+        ref_file = tmp_path / "src" / "main.py"
+        ref_file.parent.mkdir(parents=True, exist_ok=True)
+        ref_file.write_text("# source", encoding="utf-8")
+
+        meta = _make_meta(source="src/main.py", schema_version=999)
+        issue = _make_issue(refs=["src/main.py:1-10"])
+        p = _write_jsonl(tmp_path, meta, [issue])
+        report = whc.check_issues(p, tmp_path)
+        sv_errors = [
+            f for f in report.findings
+            if f.severity == "ERROR" and "schema_version" in f.message.lower()
+        ]
+        assert len(sv_errors) >= 1
+
+    # --- Mid-Execution Append Tests ---
+
+    @patch("workflow_health_check.detect_git_branch", return_value="main")
+    def test_appended_issue_with_correct_total(self, _mock_git: MagicMock, tmp_path: Path) -> None:
+        ref_file = tmp_path / "src" / "main.py"
+        ref_file.parent.mkdir(parents=True, exist_ok=True)
+        ref_file.write_text("# source", encoding="utf-8")
+
+        meta = _make_meta(source="src/main.py", schema_version=1, total_issues=2)
+        original = _make_issue(id="FEAT-010", refs=["src/main.py:1-10"])
+        appended = _make_issue(
+            id="FEAT-015",
+            refs=["src/main.py:1-10"],
+            notes="origin:mid_execution_append; reason:edge case; parent_issue:FEAT-010",
+        )
+        p = _write_jsonl(tmp_path, meta, [original, appended])
+        report = whc.check_issues(p, tmp_path)
+        # No errors expected when total_issues matches
+        assert report.errors == 0
+        # Should have INFO about appended issue
+        append_infos = [
+            f for f in report.findings
+            if f.severity == "INFO" and "appended" in f.message.lower()
+        ]
+        assert len(append_infos) == 1
+
+    # --- Archived File Tests ---
+
+    def test_latest_file_skips_archived(self, tmp_path: Path) -> None:
+        active = tmp_path / "2026-02-18_10-00-00-feat.jsonl"
+        archived = tmp_path / "2026-02-17_10-00-00-old.archived.jsonl"
+        active.write_text("{}", encoding="utf-8")
+        archived.write_text("{}", encoding="utf-8")
+        # Make archived have a newer mtime to verify it's filtered by name, not time
+        os.utime(str(active), (1000, 1000))
+        os.utime(str(archived), (2000, 2000))
+        result = whc.latest_file(tmp_path, "*.jsonl")
+        assert result is not None
+        assert result.name == "2026-02-18_10-00-00-feat.jsonl"
+
+    @patch("workflow_health_check.detect_git_branch", return_value="main")
+    def test_archived_meta_triggers_warn(self, _mock_git: MagicMock, tmp_path: Path) -> None:
+        ref_file = tmp_path / "src" / "main.py"
+        ref_file.parent.mkdir(parents=True, exist_ok=True)
+        ref_file.write_text("# source", encoding="utf-8")
+
+        meta = _make_meta(source="src/main.py", schema_version=1, archived=True)
+        issue = _make_issue(refs=["src/main.py:1-10"])
+        p = _write_jsonl(tmp_path, meta, [issue])
+        report = whc.check_issues(p, tmp_path)
+        archived_warns = [
+            f for f in report.findings
+            if f.severity == "WARN" and "archived" in f.message.lower()
+        ]
+        assert len(archived_warns) >= 1
+
 
 # ===================================================================
 # TestDecideExitCode

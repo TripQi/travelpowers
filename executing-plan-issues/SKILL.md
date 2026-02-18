@@ -243,18 +243,60 @@ When any of the following occurs, first try to resolve autonomously. If truly un
    - if other eligible issues remain, skip to the next issue
    - if no eligible issues remain, stop and report blocking/dependency constraints in 1-3 sentences
 
-## 5. JSONL Update Protocol
+## 5. JSONL Update Protocol (Atomic Write)
 
-To update a single issue in-place:
+To update a single issue in-place using atomic write:
 
-1. Read all lines of the JSONL file.
+1. Read all lines of the JSONL file into memory.
 2. Find the line with the matching `id`.
 3. Parse it as JSON, update target fields.
 4. Serialize back to a single-line JSON string.
-5. Write all lines back (preserve line order).
-6. Ensure file remains valid JSONL (one JSON object per line, UTF-8).
+5. Write all lines to a **temporary file** (`<original>.tmp`) — preserve line order.
+6. **Validate** the temporary file: every line must be valid JSON, line count must match the original.
+7. If the original file exists, create a **backup** (`<original>.bak`) by copying it.
+8. **Atomic rename:** use `os.replace("<original>.tmp", "<original>")` to atomically replace the original file.
+9. On success, the `.bak` file may be kept for one cycle (overwritten on next update) or deleted.
 
 **Never reorder lines.** Line order is the canonical execution priority order set by compile-plans.
+
+### Recovery Protocol
+
+If the process crashes mid-write:
+
+- **`.tmp` exists, original exists:** The write was interrupted before rename. Discard `.tmp` and use the original (last known good state).
+- **`.tmp` exists, original missing:** The rename may have partially failed. Validate `.tmp` — if valid, rename it to the original filename. If invalid, check for `.bak` and restore from backup.
+- **`.bak` exists, original missing:** Restore from `.bak`.
+
+### Cross-Platform Note
+
+`os.replace()` is atomic on POSIX (single filesystem). On Windows (NTFS), it is also atomic for same-volume renames. Always ensure `.tmp` and the target are on the same filesystem/volume.
+
+## 5a. Mid-Execution Issue Append Protocol
+
+During execution, a **small number** of new issues may be appended to the active JSONL without returning to compile-plans, provided all eligibility conditions are met.
+
+### Eligibility (all 4 must be true)
+
+1. The new issue is a **direct consequence** of work on an existing issue (e.g., discovered edge case, required follow-up fix).
+2. It affects **at most 1 file** not already in the JSONL's existing issue set.
+3. It is estimated at **≤ 30 lines of code change**.
+4. The user has explicitly approved the append (or the issue is blocked and cannot proceed without the new work).
+
+### Append Protocol (7 steps)
+
+1. **Identify the parent issue** — the existing issue whose execution revealed the need.
+2. **Draft the new issue** — follow the same schema as compile-plans (all 19 required fields).
+3. **Assign ID** — use the next available ID in the existing prefix sequence (e.g., if last is `AUTH-030`, use `AUTH-035` or `AUTH-040`).
+4. **Set `notes`** — include: `origin:mid_execution_append; reason:<why>; parent_issue:<id>`.
+5. **Update `meta.total_issues`** — increment by the number of appended issues.
+6. **Append the new issue line(s)** at the end of the JSONL file (after all existing issue lines).
+7. **Run the `issues` health gate** to validate the updated JSONL.
+
+### Limits
+
+- **Maximum 2 appended issues** per execution run. If more are needed, stop execution and return to compile-plans for a proper re-planning cycle.
+- Appended issues must not introduce new dependency cycles.
+- Appended issues should reference the parent issue in `depends_on` if there is a logical dependency.
 
 ## 6. Pre-Commit Self-Check
 
@@ -287,3 +329,45 @@ To update a single issue in-place:
 - Handoff output includes `path:line` references, risks, and follow-up steps.
 - Final global convergence and `full` health gate were both run (or explicitly marked as degraded with reason).
 - No health gate used unbounded retry loops.
+
+## 7. Rollback and Recovery
+
+When execution hits an unrecoverable problem or requirements change mid-flight, use one of the following rollback protocols. **General principles:** preserve history (`git revert`, not `git reset --hard`); archive rather than delete; require human judgment for rollback decisions; only roll back one stage at a time.
+
+### 7.1 Reopen a Completed Issue
+
+Use when a committed issue is discovered to be incorrect or incomplete after its closed-loop was finalized.
+
+1. `git revert <commit-hash>` — create a revert commit that undoes the issue's changes.
+2. In the JSONL, reset the issue's status fields:
+   - `dev_state` → `pending`
+   - `review_initial_state` → `pending`
+   - `review_regression_state` → `pending`
+   - `git_state` → `uncommitted`
+   - `blocked` → `false`
+3. Append to `notes`: `reopened:<date>; reason:<why>; revert_commit:<hash>`.
+4. Write JSONL using the atomic write protocol (Section 5).
+5. Re-enter the execution loop — the reopened issue is now eligible again.
+
+### 7.2 Roll Back from Execution to Planning
+
+Use when execution reveals that the plan itself is flawed (wrong task decomposition, missing tasks, incorrect dependencies).
+
+1. Archive the current JSONL: rename `<filename>.jsonl` → `<filename>.archived.jsonl`.
+2. If the meta line has an `archived` field, set `"archived": true`. Otherwise, add it.
+3. Commit the archive rename.
+4. Return to the `writing-plans` skill to revise the plan, then re-run `compile-plans` to generate a fresh JSONL.
+
+### 7.3 Roll Back from Planning to Design
+
+Use when planning reveals that the design itself needs fundamental rethinking.
+
+1. Archive the current plan: rename `<filename>.md` → `<filename>.archived.md` in `docs/plans/`.
+2. Commit the archive rename.
+3. Return to the `brainstorming` skill to revise the design.
+
+### Rollback Constraints
+
+- **One stage at a time:** Do not jump from execution directly to brainstorming. Go execution → planning → design if needed.
+- **Human approval required:** All rollback actions require explicit user approval before execution.
+- **Archived files are permanent records:** Never delete `.archived.*` files. They serve as audit trail.

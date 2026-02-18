@@ -35,6 +35,7 @@ SKILL_CONTRACTS: Dict[str, Dict[str, List[str]]] = {
         "required_markers": [
             "brainstorming.worktree_handoff",
             "brainstorming.transition_writing_plans",
+            "brainstorming.fast_track_eligibility",
         ]
     },
     "writing-plans/SKILL.md": {
@@ -77,6 +78,8 @@ STATUS_ENUMS = {
     "review_regression_state": {"pending", "in_progress", "done"},
     "git_state": {"uncommitted", "committed"},
 }
+
+KNOWN_SCHEMA_VERSIONS = {1}
 
 
 @dataclass
@@ -135,7 +138,10 @@ def resolve_under(base: Path, maybe_relative: Path) -> Path:
 def latest_file(directory: Path, pattern: str) -> Optional[Path]:
     if not directory.exists() or not directory.is_dir():
         return None
-    files = sorted(directory.glob(pattern), key=lambda p: p.stat().st_mtime)
+    files = sorted(
+        (p for p in directory.glob(pattern) if ".archived" not in p.name),
+        key=lambda p: p.stat().st_mtime,
+    )
     return files[-1] if files else None
 
 
@@ -354,6 +360,31 @@ def check_issues(issues_path: Path, project_root: Path) -> Report:
         if field_name not in meta:
             report.error(f"Meta missing field `{field_name}`", f"{issues_path}:{meta_line_no}")
 
+    # Schema version validation (backward-compatible: missing = WARN, not ERROR)
+    schema_version = meta.get("schema_version")
+    if schema_version is None:
+        report.warn(
+            "Meta missing `schema_version`; recommended to add `\"schema_version\":1`",
+            f"{issues_path}:{meta_line_no}",
+        )
+    elif not isinstance(schema_version, int):
+        report.error(
+            f"Meta `schema_version` must be an integer, got {type(schema_version).__name__}",
+            f"{issues_path}:{meta_line_no}",
+        )
+    elif schema_version not in KNOWN_SCHEMA_VERSIONS:
+        report.error(
+            f"Unknown schema_version `{schema_version}`; known versions: {sorted(KNOWN_SCHEMA_VERSIONS)}",
+            f"{issues_path}:{meta_line_no}",
+        )
+
+    # Archived JSONL detection
+    if meta.get("archived") is True:
+        report.warn(
+            "Meta has `archived=true`; this JSONL snapshot has been archived and should not be actively used",
+            f"{issues_path}:{meta_line_no}",
+        )
+
     fallback_branch = detect_git_branch(project_root)
     fallback_context = {
         "worktree_path": str(project_root),
@@ -498,6 +529,18 @@ def check_issues(issues_path: Path, project_root: Path) -> Report:
     cycle = detect_cycle(issue_ids, edges)
     if cycle:
         report.error(f"Issue dependency cycle detected: {' -> '.join(cycle)}", str(issues_path))
+
+    # Detect mid-execution appended issues (INFO level)
+    appended_count = 0
+    for _line_no, issue in issue_rows:
+        notes = issue.get("notes", "")
+        if isinstance(notes, str) and "origin:mid_execution_append" in notes:
+            appended_count += 1
+    if appended_count > 0:
+        report.info(
+            f"{appended_count} mid-execution appended issue(s) detected",
+            str(issues_path),
+        )
 
     return report
 

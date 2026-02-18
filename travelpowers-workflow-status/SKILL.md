@@ -27,7 +27,7 @@ Determine the workflow stage by checking artifacts from latest to earliest phase
 
 ### Step 1: Check `docs/issues/*.jsonl`
 
-If one or more `.jsonl` files exist in `docs/issues/`:
+If one or more `.jsonl` files exist in `docs/issues/` (**excluding** `*.archived.jsonl` files):
 
 1. Select the **latest** file (sort filenames descending) and treat it as the active snapshot candidate.
 2. Read the file and validate it strictly:
@@ -62,7 +62,7 @@ This ensures the three artifacts displayed in the report belong to the same feat
 
 ### Step 2: Check `docs/plans/*.md`
 
-If one or more `.md` files exist in `docs/plans/` and **no JSONL file exists** in Step 1:
+If one or more `.md` files exist in `docs/plans/` (**excluding** `*.archived.md` files) and **no JSONL file exists** in Step 1:
 
 1. Select the **latest** plan file (sort filenames descending).
 2. Similarly trace design: look for a matching design file by slug in `docs/designs/`.
@@ -70,11 +70,12 @@ If one or more `.md` files exist in `docs/plans/` and **no JSONL file exists** i
 
 ### Step 3: Check `docs/designs/*.md`
 
-If one or more `.md` files exist in `docs/designs/` but **no** plan was found in Step 2:
+If one or more `.md` files exist in `docs/designs/` (**excluding** `*.archived.md` files) but **no** plan was found in Step 2:
 
 1. Select the **latest** design file (sort filenames descending).
 2. Read the design doc and look for the **Execution Handoff** block (containing `worktree_path`, `branch`, `base_branch`). If found, include it in the routing context.
-3. Route to `writing-plans`, passing the design path and handoff context (if available) in the invocation message. Example: "Resuming from design doc `<path>`. Handoff context: worktree=`<path>`, branch=`<name>`, base=`<name>`."
+3. **Fast-track detection:** If the design doc contains a `## Fast-Track Spec` section, check `git log --oneline --grep="[fast-track]"` for a matching commit. If a `[fast-track]` commit exists for this feature → report as complete. If the spec exists but no matching commit → route to fast-track execution (implement + test + commit with `[fast-track]` tag).
+4. Route to `writing-plans`, passing the design path and handoff context (if available) in the invocation message. Example: "Resuming from design doc `<path>`. Handoff context: worktree=`<path>`, branch=`<name>`, base=`<name>`."
 
 ### Step 4: Nothing found
 
