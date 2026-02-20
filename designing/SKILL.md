@@ -1,9 +1,9 @@
 ---
-name: brainstorming
+name: designing
 description: "You MUST use this before any creative work - creating features, building components, adding functionality, or modifying behavior. Explores user intent, requirements and design before implementation."
 ---
 
-# Brainstorming Ideas Into Designs
+# Designing Ideas Into Specs
 
 ## Overview
 
@@ -20,7 +20,7 @@ Do NOT invoke any implementation skill, write any code, scaffold any project, or
 Every project goes through this process. A todo list, a single-function utility, a config change - all of them. "Simple" projects are where unexamined assumptions cause the most wasted work. The design can be short (a few sentences for truly simple projects), but you MUST present it and get approval.
 
 ## Fast-Track Mode
-<!-- workflow-contract:brainstorming.fast_track_eligibility -->
+<!-- workflow-contract:designing.fast_track_eligibility -->
 
 For truly trivial changes that would suffer from full-workflow overhead, a fast-track path is available. **All 7 eligibility criteria must be met** — if any single criterion fails, use the standard workflow.
 
@@ -52,7 +52,7 @@ For truly trivial changes that would suffer from full-workflow overhead, a fast-
 - Testing
 - Git commit
 
-It only skips: writing-plans, compile-plans, and executing-plan-issues (the full JSONL execution loop).
+It only skips: planning, compile-plans, and executing-plan-issues (the full JSONL execution loop).
 
 ## Checklist
 
@@ -64,15 +64,15 @@ You MUST create a task for each of these items and complete them in order:
 4. **Present design** - in sections scaled to their complexity, get user approval after each section
 4a. **Fast-track gate** - if the change meets all 7 fast-track eligibility criteria: propose fast-track to the user. If approved, write the fast-track spec, execute directly, and commit with `[fast-track]` tag. Skip steps 5-7.
 5. **Write design doc** - save to `docs/designs/YYYY-MM-DD-<topic>-design.md` and commit
-<!-- workflow-contract:brainstorming.worktree_handoff -->
+<!-- workflow-contract:designing.worktree_handoff -->
 6. **Create dedicated worktree + handoff context** - prepare and record `worktree_path`, `branch`, `base_branch`
-<!-- workflow-contract:brainstorming.transition_writing_plans -->
-7. **Transition to implementation** - invoke writing-plans skill to create implementation plan
+<!-- workflow-contract:designing.transition_planning -->
+7. **Transition to implementation** - invoke planning skill to create implementation plan
 
 ## Process Flow
 
 ```dot
-digraph brainstorming {
+digraph designing {
     "Explore project context" [shape=box];
     "Ask clarifying questions" [shape=box];
     "Propose 2-3 approaches" [shape=box];
@@ -82,7 +82,7 @@ digraph brainstorming {
     "Write fast-track spec + execute + commit" [shape=box];
     "Write design doc" [shape=box];
     "Create dedicated worktree + handoff" [shape=box];
-    "Invoke writing-plans skill" [shape=doublecircle];
+    "Invoke planning skill" [shape=doublecircle];
 
     "Explore project context" -> "Ask clarifying questions";
     "Ask clarifying questions" -> "Propose 2-3 approaches";
@@ -93,11 +93,11 @@ digraph brainstorming {
     "Fast-track eligible?" -> "Write fast-track spec + execute + commit" [label="yes, user approves"];
     "Fast-track eligible?" -> "Write design doc" [label="no"];
     "Write design doc" -> "Create dedicated worktree + handoff";
-    "Create dedicated worktree + handoff" -> "Invoke writing-plans skill";
+    "Create dedicated worktree + handoff" -> "Invoke planning skill";
 }
 ```
 
-**The terminal state is invoking writing-plans.** Do NOT invoke frontend-design, mcp-builder, or any other implementation skill. The ONLY skill you invoke after brainstorming is writing-plans.
+**The terminal state is invoking planning.** Do NOT invoke frontend-design, mcp-builder, or any other implementation skill. The ONLY skill you invoke after designing is planning.
 
 ## The Process
 
@@ -138,9 +138,9 @@ digraph brainstorming {
 - If worktree already exists, verify it points to the intended branch and is usable
 
 **Implementation:**
-- Invoke the writing-plans skill to create a detailed implementation plan
-- Pass the handoff block above in the first writing-plans message
-- Do NOT invoke any other skill. writing-plans is the next step.
+- Invoke the planning skill to create a detailed implementation plan
+- Pass the handoff block above in the first planning message
+- Do NOT invoke any other skill. planning is the next step.
 
 ## Key Principles
 

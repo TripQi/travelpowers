@@ -1,12 +1,12 @@
 ---
 name: compile-plans
-description: Use after writing-plans to convert a plan document into a JSONL issues snapshot for long-term task boundary tracking and status management
+description: Use after planning to convert a plan document into a JSONL issues snapshot for long-term task boundary tracking and status management
 argument-hint: "<path to plan file (optional, defaults to latest in docs/plans/)>"
 ---
 
 You are now in "Plan -> Issues JSONL" mode.
 
-Goal: Convert a writing-plans output (`docs/plans/YYYY-MM-DD-<feature-name>.md`) into a **uniquely named issues JSONL snapshot** (`docs/issues/<timestamp>-<slug>.jsonl`) for long-term task boundary tracking and status management.
+Goal: Convert a planning output (`docs/plans/YYYY-MM-DD-<feature-name>.md`) into a **uniquely named issues JSONL snapshot** (`docs/issues/<timestamp>-<slug>.jsonl`) for long-term task boundary tracking and status management.
 
 > Core principle: The issues JSONL is a "meeting-grade task boundary contract", not an AI vanity document.
 > Every entry must clearly define **what to do, how to verify, how to review, and how to test**.
@@ -29,8 +29,7 @@ Goal: Convert a writing-plans output (`docs/plans/YYYY-MM-DD-<feature-name>.md`)
    <!-- workflow-contract:compile-plans.schema.depends_on -->
    - `depends_on`: explicit dependency IDs (or empty array)
    - `acceptance_criteria`: verifiable, testable conditions (quantify where possible)
-   - `review_initial_requirements`: what to check during development
-   - `review_regression_requirements`: what to retest after all tasks are complete
+   - `review_requirements`: what to check (development + regression combined)
    - `test_approach`: testing strategy (test files, commands, runner)
    <!-- workflow-contract:compile-plans.schema.blocked -->
    - `blocked`: structured blocking flag (`false` by default)
@@ -56,19 +55,18 @@ Plan Tasks already contain structured metadata. **Extract directly - do not fabr
 | `### Task N: [Name]` | `phase`, `title` | N -> phase, Name -> title |
 | `**Priority:**` | `priority` | Direct extract |
 | `**Area:**` | `area` | Direct extract |
-| `**Depends On:**` | `depends_on` | `none` -> `[]`; `Task N` -> mapped issue IDs |
+| `**Depends On:**` | `depends_on` | `none` -> `[]`; `Task N` -> mapped IDs |
 | `**Acceptance Criteria:**` | `acceptance_criteria` | Direct extract |
-| `**Review (Dev):**` | `review_initial_requirements` | Direct extract |
-| `**Review (Regression):**` | `review_regression_requirements` | Direct extract |
-| `**Files:** + test commands from Steps` | `test_approach` | Combine: test file path + run command + test scenario summary |
-| Overall Task description (from Files + Steps) | `description` | Summarize in 1-2 sentences, focus on boundaries, not implementation detail |
+| `**Review Requirements:**` | `review_requirements` | Direct extract |
+| `**Test Strategy:**` | `test_approach` | Combine: test file path + command + key scenarios |
+| `**Context:**` | `description` | Direct extract or summarize in 1-2 sentences |
 
 ## 4. JSONL Schema
 
 ### Line 1: Metadata
 
 ```json
-{"type":"meta","schema_version":1,"plan":"<Feature Name>","goal":"<from plan header>","tech_stack":"<from plan header>","execution_context":{"worktree_path":"<from header>","branch":"<from header>","base_branch":"<from header>"},"source":"docs/plans/YYYY-MM-DD-<feature-name>.md","total_issues":<N>}
+{"type":"meta","schema_version":2,"plan":"<Feature Name>","goal":"<from plan header>","tech_stack":"<from plan header>","execution_context":{"worktree_path":"<from header>","branch":"<from header>","base_branch":"<from header>"},"source":"docs/plans/YYYY-MM-DD-<feature-name>.md","total_issues":<N>}
 ```
 
 ### Lines 2+: Issue Lines
@@ -86,11 +84,9 @@ One JSON object per line. Field definitions:
   "depends_on": [],
   "acceptance_criteria": "generate_token(user_id) returns valid JWT; verify_token decodes correctly; expired tokens raise error",
   "test_approach": "pytest tests/auth/test_jwt.py - unit tests for generation, verification, and expiry",
-  "review_initial_requirements": "Secret key not hardcoded; token expiry configurable; no sensitive data in payload",
-  "review_regression_requirements": "All auth-dependent endpoints still pass; token rotation scenario tested",
+  "review_requirements": "Secret key not hardcoded; token expiry configurable; no sensitive data in payload; all auth-dependent endpoints still pass after changes",
   "dev_state": "pending",
-  "review_initial_state": "pending",
-  "review_regression_state": "pending",
+  "review_state": "pending",
   "git_state": "uncommitted",
   "blocked": false,
   "owner": "",
@@ -114,11 +110,9 @@ One JSON object per line. Field definitions:
 | `depends_on` | array | yes | Dependency issue IDs, e.g. `[]` or `["AUTH-010"]` |
 | `acceptance_criteria` | string | yes | Testable acceptance conditions (thresholds, key assertions) |
 | `test_approach` | string | yes | Testing strategy: test file paths, commands, runner |
-| `review_initial_requirements` | string | yes | Review checkpoints during development |
-| `review_regression_requirements` | string | yes | Regression/retest checkpoints after completion |
+| `review_requirements` | string | yes | Review checkpoints: development + regression combined |
 | `dev_state` | string | yes | Development status enum (see Section 6) |
-| `review_initial_state` | string | yes | Initial review status enum |
-| `review_regression_state` | string | yes | Regression review status enum |
+| `review_state` | string | yes | Review status enum |
 | `git_state` | string | yes | Git status enum |
 | `blocked` | boolean | yes | Structured blocking flag (`false` default) |
 | `owner` | string | yes | Assignee (default empty, filled after meeting) |
@@ -129,6 +123,7 @@ One JSON object per line. Field definitions:
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 2 | 2026-02-20 | Merge review fields: `review_initial_requirements` + `review_regression_requirements` → `review_requirements`; `review_initial_state` + `review_regression_state` → `review_state`. Total fields: 17. |
 | 1 | 2026-02-18 | Initial schema — 19 required issue fields, meta with `execution_context` |
 
 **Backward compatibility:** The health checker treats a missing `schema_version` as a warning (not an error) so that JSONL files created before this field was introduced remain valid. However, all **new** JSONL files must include `schema_version`. Unknown or non-integer versions are errors.
@@ -141,11 +136,11 @@ One JSON object per line. Field definitions:
 
 ## 5. Test Approach Field
 
-Combine and extract from the plan Task's `**Files:**` and `**Step:**` sections:
+Extract from the plan Task's `**Test Strategy:**` section:
 
-- **Test file path:** from the `Test:` line under `**Files:**`
-- **Test command:** from `Run:` lines in Steps (pytest or other test commands)
-- **Test scenarios:** summarize key scenarios from test function names and assertions
+- **Test file path:** from the `Test file:` line
+- **Test command:** from the `Test command:` line
+- **Test scenarios:** from `Key scenarios to cover`
 - Format example: `"pytest tests/auth/test_jwt.py - covers token generation, verification, expiry edge cases"`
 - If the project uses a specific test runner or MCP, state it explicitly
 
@@ -154,8 +149,7 @@ Combine and extract from the plan Task's `**Files:**` and `**Step:**` sections:
 | Field | Values | Default |
 |-------|--------|---------|
 | `dev_state` | `pending` / `in_progress` / `done` | `pending` |
-| `review_initial_state` | `pending` / `in_progress` / `done` | `pending` |
-| `review_regression_state` | `pending` / `in_progress` / `done` | `pending` |
+| `review_state` | `pending` / `in_progress` / `done` | `pending` |
 | `git_state` | `uncommitted` / `committed` | `uncommitted` |
 | `blocked` | `false` / `true` | `false` |
 
@@ -181,7 +175,7 @@ Combine and extract from the plan Task's `**Files:**` and `**Step:**` sections:
 
 1. **Locate input** - use `$ARGUMENTS` or default to the latest plan.
 2. **Read plan** - parse header (Goal / Architecture / Tech Stack / Execution Context) and all Task sections.
-3. **Extract issues** - follow field mapping in Section 3: directly extract metadata fields (Priority / Area / Depends On / Acceptance Criteria / Review); combine Files + Steps to generate `test_approach` and `description`.
+3. **Extract issues** - follow field mapping in Section 3: directly extract metadata fields (Priority / Area / Depends On / Acceptance Criteria / Review Requirements); extract `test_approach` from Test Strategy; extract `description` from Context.
 4. **Resolve dependencies** - map `Task N` references to final issue IDs in `depends_on`.
 5. **Write JSONL** - write uniquely named snapshot to `docs/issues/`.
 6. **Validate:**
@@ -206,10 +200,10 @@ Combine and extract from the plan Task's `**Files:**` and `**Step:**` sections:
 ## 10. Full Example
 
 ```jsonl
-{"type":"meta","schema_version":1,"plan":"User Auth","goal":"Add JWT authentication to the API","tech_stack":"Python, FastAPI, PyJWT","execution_context":{"worktree_path":"/repo-auth","branch":"feature/auth","base_branch":"main"},"source":"docs/plans/2024-01-15-user-auth.md","total_issues":3}
-{"id":"AUTH-010","priority":"P0","phase":1,"area":"backend","title":"JWT Token Generation","description":"Implement generate_token and verify_token using PyJWT with HS256; tokens carry user_id claim and configurable expiry","depends_on":[],"acceptance_criteria":"generate_token(user_id) returns valid JWT; verify_token decodes correctly; expired tokens raise ExpiredTokenError","test_approach":"pytest tests/auth/test_jwt.py - generation, verification, expiry edge cases","review_initial_requirements":"Secret key from env var not hardcoded; token expiry configurable; no PII in payload","review_regression_requirements":"All auth-dependent endpoints still pass after token format changes","dev_state":"pending","review_initial_state":"pending","review_regression_state":"pending","git_state":"uncommitted","blocked":false,"owner":"","refs":["docs/plans/2024-01-15-user-auth.md:12-88"],"notes":""}
-{"id":"AUTH-020","priority":"P0","phase":2,"area":"backend","title":"Auth Middleware","description":"FastAPI dependency that extracts JWT from Authorization header and injects current_user into request","depends_on":["AUTH-010"],"acceptance_criteria":"Missing token returns 401; invalid token returns 401; valid token injects user_id into request state","test_approach":"pytest tests/auth/test_middleware.py - missing token, invalid token, valid token, expired token scenarios","review_initial_requirements":"Consistent error response format; no stack trace leakage; middleware order documented","review_regression_requirements":"Public endpoints still accessible without token; rate limiting unaffected","dev_state":"pending","review_initial_state":"pending","review_regression_state":"pending","git_state":"uncommitted","blocked":false,"owner":"","refs":["docs/plans/2024-01-15-user-auth.md:90-165"],"notes":""}
-{"id":"AUTH-030","priority":"P1","phase":3,"area":"backend","title":"Protected Route Integration","description":"Apply auth middleware to all /api/v1/users/* endpoints and update OpenAPI schema","depends_on":["AUTH-020"],"acceptance_criteria":"All protected endpoints return 401 without token; 200 with valid token; OpenAPI docs show security scheme","test_approach":"pytest tests/auth/test_routes.py - integration tests with real middleware chain","review_initial_requirements":"Backward-compatible with existing API clients during migration; deprecation headers if needed","review_regression_requirements":"Full endpoint matrix tested; no unprotected admin routes","dev_state":"pending","review_initial_state":"pending","review_regression_state":"pending","git_state":"uncommitted","blocked":false,"owner":"","refs":["docs/plans/2024-01-15-user-auth.md:167-230"],"notes":""}
+{"type":"meta","schema_version":2,"plan":"User Auth","goal":"Add JWT authentication to the API","tech_stack":"Python, FastAPI, PyJWT","execution_context":{"worktree_path":"/repo-auth","branch":"feature/auth","base_branch":"main"},"source":"docs/plans/2024-01-15-user-auth.md","total_issues":3}
+{"id":"AUTH-010","priority":"P0","phase":1,"area":"backend","title":"JWT Token Generation","description":"Implement generate_token and verify_token using PyJWT with HS256; tokens carry user_id claim and configurable expiry","depends_on":[],"acceptance_criteria":"generate_token(user_id) returns valid JWT; verify_token decodes correctly; expired tokens raise ExpiredTokenError","test_approach":"pytest tests/auth/test_jwt.py - generation, verification, expiry edge cases","review_requirements":"Secret key from env var not hardcoded; token expiry configurable; no PII in payload; all auth-dependent endpoints still pass after token format changes","dev_state":"pending","review_state":"pending","git_state":"uncommitted","blocked":false,"owner":"","refs":["docs/plans/2024-01-15-user-auth.md:12-88"],"notes":""}
+{"id":"AUTH-020","priority":"P0","phase":2,"area":"backend","title":"Auth Middleware","description":"FastAPI dependency that extracts JWT from Authorization header and injects current_user into request","depends_on":["AUTH-010"],"acceptance_criteria":"Missing token returns 401; invalid token returns 401; valid token injects user_id into request state","test_approach":"pytest tests/auth/test_middleware.py - missing token, invalid token, valid token, expired token scenarios","review_requirements":"Consistent error response format; no stack trace leakage; middleware order documented; public endpoints still accessible without token; rate limiting unaffected","dev_state":"pending","review_state":"pending","git_state":"uncommitted","blocked":false,"owner":"","refs":["docs/plans/2024-01-15-user-auth.md:90-165"],"notes":""}
+{"id":"AUTH-030","priority":"P1","phase":3,"area":"backend","title":"Protected Route Integration","description":"Apply auth middleware to all /api/v1/users/* endpoints and update OpenAPI schema","depends_on":["AUTH-020"],"acceptance_criteria":"All protected endpoints return 401 without token; 200 with valid token; OpenAPI docs show security scheme","test_approach":"pytest tests/auth/test_routes.py - integration tests with real middleware chain","review_requirements":"Backward-compatible with existing API clients during migration; deprecation headers if needed; full endpoint matrix tested; no unprotected admin routes","dev_state":"pending","review_state":"pending","git_state":"uncommitted","blocked":false,"owner":"","refs":["docs/plans/2024-01-15-user-auth.md:167-230"],"notes":""}
 ```
 
 ## 11. Conversation Output (Brief Handoff)

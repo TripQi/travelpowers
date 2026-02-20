@@ -31,19 +31,19 @@ REF_RE = re.compile(r"^(.+):(\d+)(?:-(\d+))?$")
 SKILL_MARKER_RE = re.compile(r"<!--\s*workflow-contract:\s*([a-zA-Z0-9._-]+)\s*-->")
 
 SKILL_CONTRACTS: Dict[str, Dict[str, List[str]]] = {
-    "brainstorming/SKILL.md": {
+    "designing/SKILL.md": {
         "required_markers": [
-            "brainstorming.worktree_handoff",
-            "brainstorming.transition_writing_plans",
-            "brainstorming.fast_track_eligibility",
+            "designing.worktree_handoff",
+            "designing.transition_planning",
+            "designing.fast_track_eligibility",
         ]
     },
-    "writing-plans/SKILL.md": {
+    "planning/SKILL.md": {
         "required_markers": [
-            "writing-plans.execution_context_header",
-            "writing-plans.depends_on_field",
-            "writing-plans.health_gate.plan",
-            "writing-plans.health_gate.checker_path",
+            "planning.execution_context_header",
+            "planning.depends_on_field",
+            "planning.health_gate.plan",
+            "planning.health_gate.checker_path",
         ]
     },
     "compile-plans/SKILL.md": {
@@ -72,14 +72,20 @@ SKILL_CONTRACTS: Dict[str, Dict[str, List[str]]] = {
     },
 }
 
-STATUS_ENUMS = {
+STATUS_ENUMS_V1 = {
     "dev_state": {"pending", "in_progress", "done"},
     "review_initial_state": {"pending", "in_progress", "done"},
     "review_regression_state": {"pending", "in_progress", "done"},
     "git_state": {"uncommitted", "committed"},
 }
 
-KNOWN_SCHEMA_VERSIONS = {1}
+STATUS_ENUMS_V2 = {
+    "dev_state": {"pending", "in_progress", "done"},
+    "review_state": {"pending", "in_progress", "done"},
+    "git_state": {"uncommitted", "committed"},
+}
+
+KNOWN_SCHEMA_VERSIONS = {1, 2}
 
 
 @dataclass
@@ -278,8 +284,7 @@ def check_plan(plan_path: Path) -> Report:
         "Area",
         "Depends On",
         "Acceptance Criteria",
-        "Review (Dev)",
-        "Review (Regression)",
+        "Review Requirements",
     ]
 
     for task_id, title, start_line, block in tasks:
@@ -429,27 +434,34 @@ def check_issues(issues_path: Path, project_root: Path) -> Report:
             f"{issues_path}:{meta_line_no}",
         )
 
-    required_issue_fields = [
-        "id",
-        "priority",
-        "phase",
-        "area",
-        "title",
-        "description",
-        "depends_on",
-        "acceptance_criteria",
-        "test_approach",
-        "review_initial_requirements",
-        "review_regression_requirements",
-        "dev_state",
-        "review_initial_state",
-        "review_regression_state",
-        "git_state",
-        "blocked",
-        "owner",
-        "refs",
-        "notes",
+    REQUIRED_ISSUE_FIELDS_V1 = [
+        "id", "priority", "phase", "area", "title", "description",
+        "depends_on", "acceptance_criteria", "test_approach",
+        "review_initial_requirements", "review_regression_requirements",
+        "dev_state", "review_initial_state", "review_regression_state",
+        "git_state", "blocked", "owner", "refs", "notes",
     ]
+
+    REQUIRED_ISSUE_FIELDS_V2 = [
+        "id", "priority", "phase", "area", "title", "description",
+        "depends_on", "acceptance_criteria", "test_approach",
+        "review_requirements",
+        "dev_state", "review_state",
+        "git_state", "blocked", "owner", "refs", "notes",
+    ]
+
+    # Choose field list and status enums based on schema_version
+    if isinstance(schema_version, int) and schema_version >= 2:
+        required_issue_fields = REQUIRED_ISSUE_FIELDS_V2
+        status_enums = STATUS_ENUMS_V2
+    elif isinstance(schema_version, int) and schema_version == 1:
+        required_issue_fields = REQUIRED_ISSUE_FIELDS_V1
+        status_enums = STATUS_ENUMS_V1
+    else:
+        # Missing or unknown schema_version: try v2 first, fall back to v1
+        # (warning already emitted above)
+        required_issue_fields = REQUIRED_ISSUE_FIELDS_V2
+        status_enums = STATUS_ENUMS_V2
 
     issue_map: Dict[str, Tuple[int, dict]] = {}
     for line_no, issue in issue_rows:
@@ -470,7 +482,7 @@ def check_issues(issues_path: Path, project_root: Path) -> Report:
         if issue.get("priority") not in {"P0", "P1", "P2"}:
             report.error(f"Invalid priority `{issue.get('priority')}`", location)
 
-        for field_name, allowed in STATUS_ENUMS.items():
+        for field_name, allowed in status_enums.items():
             value = issue.get(field_name)
             if value not in allowed:
                 report.error(f"Invalid {field_name} `{value}`", location)
@@ -500,7 +512,12 @@ def check_issues(issues_path: Path, project_root: Path) -> Report:
                     report.info(f"Referenced path not found (non-blocking): {ref_path}", location)
 
         if issue.get("git_state") == "committed":
-            for state_name in ("dev_state", "review_initial_state", "review_regression_state"):
+            done_check_fields = (
+                ("dev_state", "review_state")
+                if isinstance(schema_version, int) and schema_version >= 2
+                else ("dev_state", "review_initial_state", "review_regression_state")
+            )
+            for state_name in done_check_fields:
                 if issue.get(state_name) != "done":
                     report.error(f"Committed issue must have `{state_name}=done`", location)
             if issue.get("blocked") is True:

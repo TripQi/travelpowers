@@ -74,6 +74,7 @@ class WorkflowHealthCheckTests(unittest.TestCase):
                 "tech_stack": "Python",
                 "source": "docs/plans/demo.md",
                 "total_issues": 1,
+                "schema_version": 2,
             }
             issue = {
                 "id": "DEMO-010",
@@ -85,11 +86,9 @@ class WorkflowHealthCheckTests(unittest.TestCase):
                 "depends_on": [],
                 "acceptance_criteria": "criteria",
                 "test_approach": "pytest -q",
-                "review_initial_requirements": "check dev flow",
-                "review_regression_requirements": "check regression flow",
+                "review_requirements": "check dev flow; check regression flow",
                 "dev_state": "pending",
-                "review_initial_state": "pending",
-                "review_regression_state": "pending",
+                "review_state": "pending",
                 "git_state": "uncommitted",
                 "blocked": False,
                 "owner": "",
@@ -132,6 +131,7 @@ class WorkflowHealthCheckTests(unittest.TestCase):
                 },
                 "source": "docs/plans/demo.md",
                 "total_issues": 1,
+                "schema_version": 2,
             }
             issue = {
                 "id": "DEMO-020",
@@ -143,11 +143,9 @@ class WorkflowHealthCheckTests(unittest.TestCase):
                 "depends_on": [],
                 "acceptance_criteria": "criteria",
                 "test_approach": "pytest -q",
-                "review_initial_requirements": "check dev flow",
-                "review_regression_requirements": "check regression flow",
+                "review_requirements": "check dev flow; check regression flow",
                 "dev_state": "pending",
-                "review_initial_state": "done",
-                "review_regression_state": "done",
+                "review_state": "done",
                 "git_state": "committed",
                 "blocked": False,
                 "owner": "",

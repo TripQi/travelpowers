@@ -44,8 +44,7 @@ def _make_valid_plan() -> str:
         "**Area:** backend\n"
         "**Depends On:** None\n"
         "**Acceptance Criteria:** It works\n"
-        "**Review (Dev):** Manual review\n"
-        "**Review (Regression):** Automated tests\n"
+        "**Review Requirements:** Manual review, automated tests\n"
         "**Files:** src/main.py\n"
         "\n"
         "### Task 2: Second task\n"
@@ -54,8 +53,7 @@ def _make_valid_plan() -> str:
         "**Area:** frontend\n"
         "**Depends On:** Task 1\n"
         "**Acceptance Criteria:** It renders\n"
-        "**Review (Dev):** Manual review\n"
-        "**Review (Regression):** Automated tests\n"
+        "**Review Requirements:** Manual review, automated tests\n"
         "**Files:** src/ui.py\n"
     )
 
@@ -73,6 +71,7 @@ def _make_meta(**overrides: Any) -> Dict[str, Any]:
         "tech_stack": "Python",
         "source": "plan.md",
         "total_issues": 1,
+        "schema_version": 2,
         "execution_context": {
             "worktree_path": "/project",
             "branch": "main",
@@ -95,11 +94,9 @@ def _make_issue(**overrides: Any) -> Dict[str, Any]:
         "depends_on": [],
         "acceptance_criteria": "Works correctly",
         "test_approach": "Unit tests",
-        "review_initial_requirements": "Code review",
-        "review_regression_requirements": "Regression suite",
+        "review_requirements": "Code review; regression suite",
         "dev_state": "pending",
-        "review_initial_state": "pending",
-        "review_regression_state": "pending",
+        "review_state": "pending",
         "git_state": "uncommitted",
         "blocked": False,
         "owner": "agent",
@@ -323,15 +320,15 @@ class TestDetectCycle:
 class TestMarkerRegex:
 
     def test_matches_valid_marker(self) -> None:
-        line = "<!-- workflow-contract: brainstorming.worktree_handoff -->"
+        line = "<!-- workflow-contract: designing.worktree_handoff -->"
         m = whc.SKILL_MARKER_RE.search(line)
         assert m is not None
 
     def test_extracts_name(self) -> None:
-        line = "<!-- workflow-contract: writing-plans.execution_context_header -->"
+        line = "<!-- workflow-contract: planning.execution_context_header -->"
         m = whc.SKILL_MARKER_RE.search(line)
         assert m is not None
-        assert m.group(1) == "writing-plans.execution_context_header"
+        assert m.group(1) == "planning.execution_context_header"
 
     def test_no_match_regular_comment(self) -> None:
         line = "<!-- this is a regular HTML comment -->"
@@ -487,8 +484,7 @@ class TestCheckPlan:
             "**Area:** backend\n"
             "**Depends On:** None\n"
             "**Acceptance Criteria:** Works\n"
-            "**Review (Dev):** ok\n"
-            "**Review (Regression):** ok\n"
+            "**Review Requirements:** ok\n"
             "**Files:** a.py\n"
         )
         p = tmp_path / "plan.md"
@@ -523,8 +519,8 @@ class TestCheckPlan:
             "### Task 1: Incomplete\n"
             "**Priority:** P0\n"
             "**Area:** backend\n"
-            # Missing: Depends On, Acceptance Criteria, Review (Dev),
-            #          Review (Regression), Files
+            # Missing: Depends On, Acceptance Criteria, Review Requirements,
+            #          Files
         )
         p = tmp_path / "plan.md"
         p.write_text(text, encoding="utf-8")
@@ -567,12 +563,10 @@ class TestCheckPlan:
             "**Execution Context:** E\n\n"
             "### Task 1: First\n"
             "**Priority:** P0\n**Area:** a\n**Depends On:** Task 2\n"
-            "**Acceptance Criteria:** c\n**Review (Dev):** r\n"
-            "**Review (Regression):** r\n**Files:** f.py\n\n"
+            "**Acceptance Criteria:** c\n**Review Requirements:** r\n**Files:** f.py\n\n"
             "### Task 2: Second\n"
             "**Priority:** P0\n**Area:** a\n**Depends On:** Task 1\n"
-            "**Acceptance Criteria:** c\n**Review (Dev):** r\n"
-            "**Review (Regression):** r\n**Files:** f.py\n"
+            "**Acceptance Criteria:** c\n**Review Requirements:** r\n**Files:** f.py\n"
         )
         p = tmp_path / "plan.md"
         p.write_text(text, encoding="utf-8")
@@ -738,8 +732,7 @@ class TestCheckIssues:
         issue = _make_issue(
             git_state="committed",
             dev_state="pending",
-            review_initial_state="pending",
-            review_regression_state="pending",
+            review_state="pending",
         )
         p = _write_jsonl(tmp_path, meta, [issue])
         report = whc.check_issues(p, tmp_path)
@@ -759,8 +752,7 @@ class TestCheckIssues:
         issue = _make_issue(
             git_state="committed",
             dev_state="done",
-            review_initial_state="done",
-            review_regression_state="done",
+            review_state="done",
             blocked=True,
         )
         p = _write_jsonl(tmp_path, meta, [issue])
@@ -977,7 +969,7 @@ class TestCheckIssues:
         ref_file.parent.mkdir(parents=True, exist_ok=True)
         ref_file.write_text("# source", encoding="utf-8")
 
-        meta = _make_meta(source="src/main.py", schema_version=1)
+        meta = _make_meta(source="src/main.py", schema_version=2)
         issue = _make_issue(refs=["src/main.py:1-10"])
         p = _write_jsonl(tmp_path, meta, [issue])
         report = whc.check_issues(p, tmp_path)
@@ -1010,7 +1002,7 @@ class TestCheckIssues:
         ref_file.parent.mkdir(parents=True, exist_ok=True)
         ref_file.write_text("# source", encoding="utf-8")
 
-        meta = _make_meta(source="src/main.py", schema_version=1, total_issues=2)
+        meta = _make_meta(source="src/main.py", schema_version=2, total_issues=2)
         original = _make_issue(id="FEAT-010", refs=["src/main.py:1-10"])
         appended = _make_issue(
             id="FEAT-015",
@@ -1048,7 +1040,7 @@ class TestCheckIssues:
         ref_file.parent.mkdir(parents=True, exist_ok=True)
         ref_file.write_text("# source", encoding="utf-8")
 
-        meta = _make_meta(source="src/main.py", schema_version=1, archived=True)
+        meta = _make_meta(source="src/main.py", schema_version=2, archived=True)
         issue = _make_issue(refs=["src/main.py:1-10"])
         p = _write_jsonl(tmp_path, meta, [issue])
         report = whc.check_issues(p, tmp_path)
@@ -1057,6 +1049,18 @@ class TestCheckIssues:
             if f.severity == "WARN" and "archived" in f.message.lower()
         ]
         assert len(archived_warns) >= 1
+
+    @patch("workflow_health_check.detect_git_branch", return_value="main")
+    def test_schema_version_2_valid(self, _mock_git: MagicMock, tmp_path: Path) -> None:
+        ref_file = tmp_path / "src" / "main.py"
+        ref_file.parent.mkdir(parents=True, exist_ok=True)
+        ref_file.write_text("# source", encoding="utf-8")
+
+        meta = _make_meta(source="src/main.py", schema_version=2)
+        issue = _make_issue(refs=["src/main.py:1-10"])
+        p = _write_jsonl(tmp_path, meta, [issue])
+        report = whc.check_issues(p, tmp_path)
+        assert report.errors == 0
 
 
 # ===================================================================

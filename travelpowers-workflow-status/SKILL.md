@@ -33,13 +33,13 @@ If one or more `.jsonl` files exist in `docs/issues/` (**excluding** `*.archived
 2. Read the file and validate it strictly:
    - First line parses as JSON object and is workflow `meta`.
    - There is at least one issue line after meta.
-   - Every issue line includes required workflow status fields: `dev_state`, `review_initial_state`, `review_regression_state`, `git_state`, `blocked`.
+   - Every issue line includes required workflow status fields: `dev_state`, `review_state`, `git_state`, `blocked`.
 3. **Error handling (latest snapshot):** if the latest file is invalid (empty, invalid JSON, missing/invalid meta line, no issue rows, or issue rows missing required status fields), **stop routing** and report the snapshot as invalid. Do not auto-fallback to older JSONL.
 4. Classify each issue by closed-loop status. **Evaluate in this exact order — first match wins:**
 
    | Priority | Category | Condition |
    |----------|----------|-----------|
-   | 1 | **complete** | `dev_state=done` AND `review_initial_state=done` AND `review_regression_state=done` AND `git_state=committed` AND `blocked=false` |
+   | 1 | **complete** | `dev_state=done` AND `review_state=done` AND `git_state=committed` AND `blocked=false` |
    | 2 | **blocked** | `blocked=true` |
    | 3 | **in_progress** | `dev_state=in_progress` OR (`dev_state=done` AND `git_state=uncommitted`) |
    | 4 | **pending** | Everything else |
@@ -75,13 +75,13 @@ If one or more `.md` files exist in `docs/designs/` (**excluding** `*.archived.m
 1. Select the **latest** design file (sort filenames descending).
 2. Read the design doc and look for the **Execution Handoff** block (containing `worktree_path`, `branch`, `base_branch`). If found, include it in the routing context.
 3. **Fast-track detection:** If the design doc contains a `## Fast-Track Spec` section, check `git log --oneline --grep="[fast-track]"` for a matching commit. If a `[fast-track]` commit exists for this feature → report as complete. If the spec exists but no matching commit → route to fast-track execution (implement + test + commit with `[fast-track]` tag).
-4. Route to `writing-plans`, passing the design path and handoff context (if available) in the invocation message. Example: "Resuming from design doc `<path>`. Handoff context: worktree=`<path>`, branch=`<name>`, base=`<name>`."
+4. Route to `planning`, passing the design path and handoff context (if available) in the invocation message. Example: "Resuming from design doc `<path>`. Handoff context: worktree=`<path>`, branch=`<name>`, base=`<name>`."
 
 ### Step 4: Nothing found
 
 If none of the above directories contain relevant artifacts:
 
-1. Route to `brainstorming`.
+1. Route to `designing`.
 
 ## Output Format
 
@@ -188,7 +188,7 @@ Artifacts:
   plan   : (none)
   issues : (none)
 
-Next: writing-plans (design: docs/designs/2026-02-16-auth-design.md, worktree: /repo-auth, branch: feature/auth)
+Next: planning (design: docs/designs/2026-02-16-auth-design.md, worktree: /repo-auth, branch: feature/auth)
 ```
 
 **Empty project:**
@@ -201,7 +201,7 @@ Artifacts:
   plan   : (none)
   issues : (none)
 
-Next: brainstorming
+Next: designing
 ```
 
 ## Execution Steps
@@ -215,4 +215,4 @@ Next: brainstorming
 4. **Trace artifact chain** — resolve related artifacts through `meta.source` or filename slug matching, not by independently picking the latest of each type.
 5. **If valid JSONL found** — classify each issue (using priority-ordered rules), compute counts, then run freshness guard before deciding completion.
 6. **Print status report** — using the output format above.
-7. **Route** — invoke the downstream skill directly in the same turn (unless workflow is complete or safety-stop is active). When routing to `writing-plans`, include the design path and any handoff context found in the design doc.
+7. **Route** — invoke the downstream skill directly in the same turn (unless workflow is complete or safety-stop is active). When routing to `planning`, include the design path and any handoff context found in the design doc.

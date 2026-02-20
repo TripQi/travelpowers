@@ -17,8 +17,7 @@ Goal: Use a `docs/issues/*.jsonl` file as the single source of truth for task bo
 3. **Closed loop is non-negotiable.** Implementation + doc sync + review + self-verify + git commit - all required. No shortcuts.
 4. **Status-driven.** Only use these values:
    - `dev_state`: `pending` | `in_progress` | `done`
-   - `review_initial_state`: `pending` | `in_progress` | `done`
-   - `review_regression_state`: `pending` | `in_progress` | `done`
+   - `review_state`: `pending` | `in_progress` | `done`
    - `git_state`: `uncommitted` | `committed`
    <!-- workflow-contract:executing-plan-issues.schema.blocked -->
    - `blocked`: `false` | `true`
@@ -37,7 +36,7 @@ Goal: Use a `docs/issues/*.jsonl` file as the single source of truth for task bo
 - **Health checker path resolution:** Always resolve `<checker_path>` via `workflow-health-check/SKILL.md` protocol; never assume a fixed relative path.
 - **No unauthorized snapshots:** Do not create `docs/issues/issues.jsonl` or any other summary/snapshot JSONL unless the user explicitly requests it.
 
-## 2. Workflow (Execution Version)
+## 2. Workflow (6-Phase Execution)
 
 Every issue must progress through these phases in order. Each phase must use tools to actually modify files and verify - never "imagine" completion.
 
@@ -45,22 +44,18 @@ Every issue must progress through these phases in order. Each phase must use too
 
 Use this as the minimal execution skeleton to avoid phase omissions:
 
-1. Phase 1: validate JSONL + run `issues` health gate (max 2 attempts).
-2. Phase 2: pick one eligible issue and write `picked_reason`.
-3. Phase 4-6: set `in_progress`, implement minimal changes, sync docs/refs.
-4. Phase 7-8: finish initial/regression review + evidence-based self-verify.
-5. Phase 9: write back `dev_state=done`, keep `git_state=uncommitted`.
-6. Phase 10: commit code, run per-issue health gate **before amend**, then amend JSONL final state.
-7. Phase 11-13: handoff, loop, then run final `full` health gate.
+1. Phase 1: validate JSONL + run `issues` health gate (once per execution run).
+2. Phase 2: pick one eligible issue + output summary + record `picked_reason`.
+3. Phase 3: set `in_progress`, collect context, implement, test, verify (autonomous — one phase, your rhythm).
+4. Phase 4: review against `review_requirements` + commit + health gate + update JSONL.
+5. Phase 5: loop back to Phase 2, or proceed to Phase 6 if done/stuck.
+6. Phase 6: cross-issue regression + full health gate.
 
 If this quick reference conflicts with later details, follow the later phase details.
 
-### Phase 0: Receive and Reality Check + Establish Execution Plan
+### Phase 1: Init (Read JSONL + Validate Schema)
 
-- Restate in 1-2 sentences: JSONL path, current issue `id`/`title`, acceptance criteria, and risks (if any).
-- Use `update_plan` to establish and track this execution round (suggested 3 steps: read/validate JSONL -> loop through issues -> summarize handoff). Do not rebuild the plan per issue - JSONL status is the fine-grained tracker.
-
-### Phase 1: Read JSONL + Validate Schema
+Run this phase **once per execution run**, not per issue.
 
 - Verify the file contains one valid meta line and issue lines matching compile-plans schema.
 - Validate every issue has: `depends_on` (array), `blocked` (boolean), status fields, non-empty `refs`.
@@ -84,124 +79,89 @@ If this quick reference conflicts with later details, follow the later phase det
 2. **Then pick deliverables:** among remaining eligible issues, choose autonomously. Suggested heuristics: P0 -> P1 -> P2; prefer tasks that unblock others; minimize context switches.
 3. **Record reason:** write `picked_reason:<1 sentence>` into `notes`.
 
-If no issue is eligible, go to Phase 12 stop-condition logic.
+If no issue is eligible, go to Phase 5 stop-condition logic.
 
 **Output summary:** `id` / `title` / `description` / `acceptance_criteria` / `test_approach` / `depends_on` / `refs` (concise).
 
-### Phase 3: Fill Missing Execution Info (If Needed)
+### Phase 3: Execute (Autonomous Implementation)
 
-- `acceptance_criteria` must be verifiable (reproduction steps / thresholds).
-- `review_initial_requirements` and `review_regression_requirements` must be actionable.
-- `test_approach` must be specific (file paths + commands).
-- `refs` must have at least one `path:line` entry.
-- `depends_on` must reference real IDs only.
-- If any field needs updating: **write to JSONL first, then proceed to code**.
+You have full autonomy in this phase. The goal is to make `acceptance_criteria` pass. How you get there is your decision.
 
-### Phase 4: Start Status + Write Back JSONL
+**On entry:** Set `dev_state` -> `in_progress`, `review_state` -> `in_progress`. Save JSONL.
 
-- Set `blocked` -> `false`.
-- Set `dev_state` -> `in_progress`.
-- Set `review_initial_state` -> `in_progress` (review starts alongside development).
-- Save JSONL (UTF-8, in-place update).
+**Guidelines (not rigid steps):**
+- Start from `refs` to understand context. Read as much as needed — no artificial tool call budget.
+- Implement the change. You decide the rhythm: TDD, code-first, whatever works.
+- Run tests during implementation, not just at the end.
+- Fix failures before advancing.
+- Keep changes within the issue boundary (`description` + `acceptance_criteria`).
+- Update docs, comments, and `refs` directly related to this issue.
 
-### Phase 5: Context Gathering (Minimum Necessary)
+**Quality gates (shifted left):**
+- Single responsibility, nesting depth <= 3
+- No obvious O(N^2), unbounded caches, or missing timeouts
+- `git diff` before commit to verify change boundary — no unrelated formatting or renames
 
-- Start from files pointed to by `refs`.
-- Use targeted queries (`rg`, precise symbol lookup) rather than directory-level scanning.
-- **Budget: 5-8 tool calls** for initial context. If exceeded, record the reason in `notes`.
-- **Early stop:** once you can name specific files and functions to modify, move to implementation. Return to gathering only if verification fails or new unknowns appear.
+**Self-verify:** Provide pass/fail **evidence** for each acceptance criterion. Run test commands from `test_approach`. If tests cannot run, follow limited acceptance (Section 1, rule 7).
 
-### Phase 6: Implement (Acceptance-Criteria Driven) + Doc Sync
+**When done:** set `dev_state` → `done`, proceed to Phase 4.
 
-1. **Pre-implementation confirmation**
-   - Break `acceptance_criteria` into minimal verifiable change sets (prefer 1-3 testable points). If they cannot be broken down, refine criteria in JSONL first.
-   - Clarify boundary: this implementation covers only this issue. If splitting is needed, update JSONL first.
+### Phase 4: Review & Commit
 
-2. **Minimal change design (KISS / YAGNI / compatibility first)**
-   - Reuse existing project patterns and abstractions. No new architecture or dependencies without approval.
-   - Do not break existing API/CLI/data formats. If necessary, add compatibility branches and record rationale in `notes`.
+1. **Review:** Check against `review_requirements` point by point. Set `review_state` -> `done`.
+   - If review cannot fully run in the current environment: follow limited acceptance. Still set `review_state` -> `done`, but do not claim tests passed.
 
-3. **Coding execution (quality gates shifted left)**
-   - Single responsibility: functions do one thing. Nesting depth <= 3.
-   - Error handling and observability: clear return/exception handling and logging on critical failure paths (no sensitive data in logs).
-   - Performance and resources: avoid obvious O(N^2), full table scans, unbounded caches, unbounded retries. Set timeouts and fallbacks for external dependencies.
-   - Before committing: `git diff` to verify change boundary - no unrelated formatting or renames.
+2. **Finalize status:** Set `dev_state` -> `done`. Keep `git_state` as `uncommitted` until commit succeeds. Append `done_at:<date>` and acceptance evidence summary to `notes`. Save JSONL.
 
-4. **In-loop verification**
-   - Run the most relevant tests during implementation (not all at the end). Fix failures before advancing status.
-   - Add minimal necessary test cases when a test framework already exists. Do not force a new framework onto a project that has none.
+3. **Git commit:**
+   - `git status` / `git diff` to confirm changes only cover this issue. Remove unrelated changes.
+   - `git add` must include: code changes + JSONL (same issue commit).
+   - Commit granularity: one issue = one commit.
+   - Commit message format: `[<id>] <title>` (add brief explanation if needed).
 
-5. **Documentation / refs sync (equal priority to implementation)**
-   - Update docs, comments, and acceptance records directly related to this issue.
-   - If new entry points or key behavior changes are introduced: append new `path:line` to `refs`.
+4. **Per-issue automated health gate (mandatory, before amend):** resolve `<checker_path>` and run `python <checker_path> --mode issues --project-root . --issues <jsonl-path> --fail-on error`.
+   <!-- workflow-contract:executing-plan-issues.health_gate.per_issue_pre_amend -->
+   - Anti-loop policy: max 2 attempts.
+   <!-- workflow-contract:executing-plan-issues.health_gate.anti_loop -->
+   - If checker unavailable/runtime-failed: record `validation_limited:health_gate_unavailable` and continue to amend step.
+   - If attempt 2 still fails with validation errors:
+     - stop automatic retries and do not amend
+     - keep `git_state=uncommitted`
+     - set `blocked=true`
+     - append `blocked:health_gate_failed(attempt=2)` + concise reason in `notes`
+     - write JSONL and stop this run (escalate to user); do not loop
 
-### Phase 7: Review (Two-Phase)
+5. **Amend JSONL into commit:** After health gate pass/degraded:
+   - set `git_state` -> `committed`
+   - append `commit:<hash>` in `notes`
+   - run `git add <jsonl> && git commit --amend --no-edit` so code + final state stay in one issue commit
 
-- **Initial review:** check against `review_initial_requirements` point by point. Set `review_initial_state` -> `done`.
-- **Regression review:** check against `review_regression_requirements`. Run broader tests. Set `review_regression_state` -> `done`.
-- If regression cannot run in the current environment: follow limited acceptance (Section 1, rule 7). Still set `review_regression_state` -> `done`, but do not claim tests passed.
+6. **Commit failure handling:** If commit/amend fails:
+   - keep `git_state` as `uncommitted`
+   - set `blocked` -> `true`
+   - record `blocked:git commit failed <reason>` in `notes`
+   - stop (do not continue to next issue)
 
-### Phase 8: Self-Verify (Strict Against acceptance_criteria)
+7. **Handoff (per issue, concise):**
+   - Issue `id` / `title` processed.
+   - If multiple issues processed this round: completed count / remaining count / blocked ids (if any).
+   - Key changes with file references (`path:line`).
+   - Actual tests run and results.
+   - If limited acceptance: untested items, reasons, and `manual_test` commands.
+   - Local commit hash (if committed).
+   - Risks and follow-up suggestions (if any).
 
-- Provide pass/fail **evidence** for each criterion.
-- Run test commands from `test_approach`.
-- If tests cannot run: record per rule 7 in `notes`, provide best available alternative verification, and state explicitly what was not tested in handoff.
-
-### Phase 9: Finalize Status + Write Back JSONL (Before Commit)
-
-- Set `dev_state` -> `done`.
-- Keep `git_state` as `uncommitted` until the commit actually succeeds.
-- Append to `notes`: `done_at:<date>`, acceptance evidence summary.
-- Save JSONL (UTF-8, in-place update).
-
-### Phase 10: Git Commit (Closed-Loop Critical Step)
-
-- `git status` / `git diff` to confirm changes only cover this issue. Remove unrelated changes.
-- `git add` must include: code changes + JSONL (same issue commit).
-- Commit granularity: one issue = one commit.
-- Commit message format: `[<id>] <title>` (add brief explanation if needed).
-- **Per-issue automated health gate (mandatory, before amend):** resolve `<checker_path>` and run `python <checker_path> --mode issues --project-root . --issues <jsonl-path> --fail-on error`.
-  <!-- workflow-contract:executing-plan-issues.health_gate.per_issue_pre_amend -->
-  - Anti-loop policy: max 2 attempts.
-  <!-- workflow-contract:executing-plan-issues.health_gate.anti_loop -->
-  - If checker unavailable/runtime-failed: record `validation_limited:health_gate_unavailable` and continue to amend step.
-  - If attempt 2 still fails with validation errors:
-    - stop automatic retries and do not amend
-    - keep `git_state=uncommitted`
-    - set `blocked=true`
-    - append `blocked:health_gate_failed(attempt=2)` + concise reason in `notes`
-    - write JSONL and stop this run (escalate to user); do not loop
-- After per-issue health gate pass/degraded, update this issue in JSONL:
-  - set `git_state` -> `committed`
-  - append `commit:<hash>` in `notes`
-  - run `git add <jsonl> && git commit --amend --no-edit` so code + final state stay in one issue commit
-- If commit/amend fails:
-  - keep `git_state` as `uncommitted`
-  - set `blocked` -> `true`
-  - record `blocked:git commit failed <reason>` in `notes`
-  - stop (do not continue to next issue)
-
-### Phase 11: Handoff Output (Per Issue, Concise)
-
-- Issue `id` / `title` processed.
-- If multiple issues processed this round: completed count / remaining count / blocked ids (if any).
-- Key changes with file references (`path:line`).
-- Actual tests run and results.
-- If limited acceptance: untested items, reasons, and `manual_test` commands.
-- Local commit hash (if committed).
-- Risks and follow-up suggestions (if any).
-
-### Phase 12: Loop and Stop Conditions
+### Phase 5: Loop and Stop Conditions
 
 After finishing one issue, return to Phase 2 until one condition is met:
 
-- **All issues reach closed-loop complete** -> go to Phase 13 global convergence.
+- **All issues reach closed-loop complete** -> go to Phase 6 global convergence.
 - **No eligible issue exists**:
   - if unresolved issues are all `blocked=true`, stop and report blocking list with minimum decision info
   - if unresolved issues are only dependency-blocked, report which upstream issue(s) are missing
   - if dependency cycle is detected late, stop and report cycle
 
-### Phase 13: Global Convergence (Final Gate)
+### Phase 6: Final Gate (Global Convergence)
 
 When all issues are closed-loop complete:
 
@@ -217,12 +177,11 @@ When all issues are closed-loop complete:
 An issue is closed-loop complete only when ALL of the following are true:
 
 - `dev_state` = `done`
-- `review_initial_state` = `done`
-- `review_regression_state` = `done`
+- `review_state` = `done`
 - `git_state` = `committed`
 - `blocked` = `false`
 
-If limited acceptance was used: `review_regression_state` may be `done`, but `notes` must contain `validation_limited:` and `manual_test:`.
+If limited acceptance was used: `review_state` may be `done`, but `notes` must contain `validation_limited:` and `manual_test:`.
 
 ## 4. Failure and Blocking (Must Be Recorded)
 
@@ -238,7 +197,7 @@ When any of the following occurs, first try to resolve autonomously. If truly un
 **Recording protocol:**
 
 1. Set `blocked` -> `true`, and write `blocked:<reason>` + investigation done + next-step suggestions into `notes`.
-2. Keep `dev_state` / `review_*_state` at true progress (usually `in_progress`). `git_state` must remain `uncommitted`.
+2. Keep `dev_state` / `review_state` at true progress (usually `in_progress`). `git_state` must remain `uncommitted`.
 3. **Continue strategy:**
    - if other eligible issues remain, skip to the next issue
    - if no eligible issues remain, stop and report blocking/dependency constraints in 1-3 sentences
@@ -285,7 +244,7 @@ During execution, a **small number** of new issues may be appended to the active
 ### Append Protocol (7 steps)
 
 1. **Identify the parent issue** — the existing issue whose execution revealed the need.
-2. **Draft the new issue** — follow the same schema as compile-plans (all 19 required fields).
+2. **Draft the new issue** — follow the same schema as compile-plans (all 17 required fields).
 3. **Assign ID** — use the next available ID in the existing prefix sequence (e.g., if last is `AUTH-030`, use `AUTH-035` or `AUTH-040`).
 4. **Set `notes`** — include: `origin:mid_execution_append; reason:<why>; parent_issue:<id>`.
 5. **Update `meta.total_issues`** — increment by the number of appended issues.
@@ -304,7 +263,7 @@ During execution, a **small number** of new issues may be appended to the active
 
 - Acceptance criteria have reproducible evidence (test output / reproduction steps / screenshot path).
 - If limited acceptance: `notes` contains `validation_limited` / `manual_test` / `evidence` / `risk`, and handoff states what was not tested.
-- `review_initial_state` and `review_regression_state` are both advanced as required (two tracks, not interchangeable).
+- `review_state` is advanced as required.
 - JSONL and code are committed together for the issue (`git add` covers both; final `git_state` is `committed`).
 - Documentation / comments / refs are synced with implementation (minimal but accurate).
 - Commit message starts with `[<id>] <title>` and contains no unrelated changes.
@@ -321,9 +280,7 @@ During execution, a **small number** of new issues may be appended to the active
 
 **Process self-check:**
 
-- Receive-and-reality-check was recorded before touching tools.
-- Initial context gathering stayed within 5-8 tool calls (or `notes` records exception reason).
-- `update_plan` tracks >=2-step tasks and is updated in real time (not batched).
+- Init phase validated JSONL before any code was touched.
 - Dependency eligibility was enforced before picking each issue.
 - Per-issue `issues` health gate result was recorded (`passed` or explicit `degraded`).
 - Handoff output includes `path:line` references, risks, and follow-up steps.
@@ -341,8 +298,7 @@ Use when a committed issue is discovered to be incorrect or incomplete after its
 1. `git revert <commit-hash>` — create a revert commit that undoes the issue's changes.
 2. In the JSONL, reset the issue's status fields:
    - `dev_state` → `pending`
-   - `review_initial_state` → `pending`
-   - `review_regression_state` → `pending`
+   - `review_state` → `pending`
    - `git_state` → `uncommitted`
    - `blocked` → `false`
 3. Append to `notes`: `reopened:<date>; reason:<why>; revert_commit:<hash>`.
@@ -356,7 +312,7 @@ Use when execution reveals that the plan itself is flawed (wrong task decomposit
 1. Archive the current JSONL: rename `<filename>.jsonl` → `<filename>.archived.jsonl`.
 2. If the meta line has an `archived` field, set `"archived": true`. Otherwise, add it.
 3. Commit the archive rename.
-4. Return to the `writing-plans` skill to revise the plan, then re-run `compile-plans` to generate a fresh JSONL.
+4. Return to the `planning` skill to revise the plan, then re-run `compile-plans` to generate a fresh JSONL.
 
 ### 7.3 Roll Back from Planning to Design
 
@@ -364,10 +320,10 @@ Use when planning reveals that the design itself needs fundamental rethinking.
 
 1. Archive the current plan: rename `<filename>.md` → `<filename>.archived.md` in `docs/plans/`.
 2. Commit the archive rename.
-3. Return to the `brainstorming` skill to revise the design.
+3. Return to the `designing` skill to revise the design.
 
 ### Rollback Constraints
 
-- **One stage at a time:** Do not jump from execution directly to brainstorming. Go execution → planning → design if needed.
+- **One stage at a time:** Do not jump from execution directly to designing. Go execution → planning → design if needed.
 - **Human approval required:** All rollback actions require explicit user approval before execution.
 - **Archived files are permanent records:** Never delete `.archived.*` files. They serve as audit trail.

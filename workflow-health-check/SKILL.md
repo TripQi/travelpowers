@@ -70,7 +70,7 @@ For `issues` checks, if `meta.execution_context` is missing/incomplete/non-objec
 ## Integration Contract
 <!-- workflow-contract:workflow-health-check.integration_contract -->
 
-- `writing-plans`: run `--mode plan` before committing plan doc
+- `planning`: run `--mode plan` before committing plan doc
 - `compile-plans`: run `--mode issues` before committing snapshot
 - `executing-plan-issues`:
   - Phase 1: run `--mode issues`

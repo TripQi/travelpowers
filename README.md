@@ -2,7 +2,7 @@
 
 **从创意到交付的结构化 AI 开发工作流框架**
 
-TravelPowers 是一套为 大模型 设计的多阶段技能（Skill）工作流，将软件开发过程拆解为 **头脑风暴 → 计划编写 → 任务编译 → 闭环执行** 四个阶段，每个阶段由专属技能驱动，并通过自动化健康门（Health Gate）保障质量。核心思路借鉴了 superpowers。
+TravelPowers 是一套为 大模型 设计的多阶段技能（Skill）工作流，将软件开发过程拆解为 **设计 → 计划 → 任务编译 → 闭环执行** 四个阶段，每个阶段由专属技能驱动，并通过自动化健康门（Health Gate）保障质量。核心思路借鉴了 superpowers。
 
 ---
 
@@ -10,7 +10,7 @@ TravelPowers 是一套为 大模型 设计的多阶段技能（Skill）工作流
 
 ```
  ┌──────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────────┐
- │ brainstorming │────▶│ writing-plans│────▶│compile-plans │────▶│executing-plan-   │
+ │   designing   │────▶│   planning   │────▶│compile-plans │────▶│executing-plan-   │
  │              │     │              │     │              │     │     issues        │
  │  探索需求     │     │  编写计划     │     │  编译任务     │     │  闭环执行         │
  │  提出方案     │     │  拆分步骤     │     │  生成 JSONL   │     │  实现→审查→提交    │
@@ -37,7 +37,7 @@ TravelPowers 是一套为 大模型 设计的多阶段技能（Skill）工作流
 
 ## 四个核心阶段
 
-### Phase 1: Brainstorming — 头脑风暴
+### Phase 1: Designing — 设计
 
 > 任何项目都必须经过设计，哪怕它"看起来很简单"。
 
@@ -51,13 +51,13 @@ TravelPowers 是一套为 大模型 设计的多阶段技能（Skill）工作流
 
 **快速通道（Fast-Track）**：对于满足全部 7 项资格标准的极小变更（单文件、≤30行、无新依赖、无 API 变更、明显正确、已有测试、用户批准），可跳过后续三个阶段，直接执行并以 `[fast-track]` 标签提交。
 
-### Phase 2: Writing Plans — 编写计划
+### Phase 2: Planning — 编写计划
 
 > 假设执行者对代码库一无所知，把一切写清楚。
 
-- 将已批准的设计拆分为 **bite-sized 任务**（每步 2-5 分钟）
-- 每个任务包含：优先级、依赖、验收标准、需触及的文件、测试命令
-- 遵循 **TDD 节奏**：写测试 → 运行失败 → 实现 → 运行通过 → 提交
+- 将已批准的设计拆分为 **可独立交付的功能模块**
+- 每个任务包含：优先级、依赖、验收标准、需触及的文件、测试策略
+- 执行 agent 自主决定实现节奏（TDD、code-first 均可）
 - 输出计划文档：`docs/plans/YYYY-MM-DD-<feature-name>.md`
 - 通过健康门验证计划结构
 
@@ -87,17 +87,16 @@ TravelPowers 是一套为 大模型 设计的多阶段技能（Skill）工作流
     └── Git 提交（代码 + JSONL 状态更新）
 ```
 
-**状态机驱动**，每条 issue 追踪五个维度：
+**状态机驱动**，每条 issue 追踪四个维度：
 
 | 字段 | 取值 | 含义 |
 |------|------|------|
 | `dev_state` | pending → in_progress → done | 开发进度 |
-| `review_initial_state` | pending → in_progress → done | 开发期审查 |
-| `review_regression_state` | pending → in_progress → done | 回归审查 |
+| `review_state` | pending → in_progress → done | 审查状态 |
 | `git_state` | uncommitted → committed | 提交状态 |
 | `blocked` | false / true | 是否阻塞 |
 
-**闭环完成** = 五个字段全部达到终态。
+**闭环完成** = 四个字段全部达到终态。
 
 ---
 
@@ -131,7 +130,7 @@ python workflow_health_check.py --mode full --plan <plan> --issues <jsonl> --fai
 
 | 反模式 | 防护机制 |
 |--------|----------|
-| "太简单不需要设计" | 所有项目强制经过 brainstorming |
+| "太简单不需要设计" | 所有项目强制经过 designing |
 | 无限重试循环 | 最多 2 次重试（初始 + 1 次） |
 | 跳过测试 | 验收标准和测试方法为必填字段 |
 | 隐式依赖 | `depends_on` 强制显式声明 |
@@ -150,9 +149,9 @@ python workflow_health_check.py --mode full --plan <plan> --issues <jsonl> --fai
 
 ```
 travelpowers/
-├── brainstorming/                      # Phase 1: 头脑风暴
+├── designing/                          # Phase 1: 设计
 │   └── SKILL.md
-├── writing-plans/                      # Phase 2: 编写计划
+├── planning/                           # Phase 2: 编写计划
 │   └── SKILL.md
 ├── compile-plans/                      # Phase 3: 编译任务
 │   └── SKILL.md
@@ -187,8 +186,8 @@ git clone <repo-url> ~/.codex/skills/travelpowers
 在 Claude Code 中直接调用技能名称即可：
 
 ```
-/brainstorming          # 开始头脑风暴，探索需求
-/writing-plans          # 将设计转化为实现计划
+/designing              # 开始设计，探索需求
+/planning              # 将设计转化为实现计划
 /compile-plans          # 将计划编译为 JSONL 任务快照
 /executing-plan-issues  # 闭环执行所有任务
 ```
@@ -216,12 +215,12 @@ your-project/
 ## 示例：添加 JWT 认证
 
 ```
-1. /brainstorming
+1. /designing
    → 讨论认证方案：JWT vs Session vs OAuth
    → 用户批准 JWT 方案
    → 产出: docs/designs/2026-02-18-jwt-auth-design.md
 
-2. /writing-plans
+2. /planning
    → Task 1: 实现 token 生成 (P0, 后端, 无依赖)
    → Task 2: 认证中间件 (P0, 后端, 依赖 Task 1)
    → Task 3: 路由集成 (P1, 后端, 依赖 Task 2)
@@ -246,8 +245,8 @@ your-project/
 | 原则 | 说明 |
 |------|------|
 | **强制设计先行** | 不论任务大小，都必须先设计后实现 |
-| **Bite-Sized 粒度** | 每步 2-5 分钟，降低认知负荷，频繁提交 |
-| **TDD 驱动** | 写测试 → 红灯 → 实现 → 绿灯 → 提交 |
+| **功能模块粒度** | 每个 Task 是可独立交付的功能模块 |
+| **执行自主** | 执行 agent 自主决定实现节奏 |
 | **闭环非妥协** | 实现+审查+验证+提交，缺一不可 |
 | **KISS / YAGNI** | 只做当前任务要求的，不做假设性扩展 |
 | **可中断可恢复** | JSONL 状态持久化，随时可以从断点继续 |

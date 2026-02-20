@@ -1,9 +1,9 @@
 ---
-name: writing-plans
+name: planning
 description: Use when you have a spec or requirements for a multi-step task, before touching code
 ---
 
-# Writing Plans
+# Planning
 
 ## Overview
 
@@ -11,13 +11,13 @@ Write comprehensive implementation plans assuming the engineer has zero context 
 
 Assume they are a skilled developer, but know almost nothing about our toolset or problem domain. Assume they don't know good test design very well.
 
-**Announce at start:** "I'm using the writing-plans skill to create the implementation plan."
+**Announce at start:** "I'm using the planning skill to create the implementation plan."
 
 ## Preflight (Must Pass)
 
 Before writing any plan content, confirm all of these:
 
-1. Approved design exists (from brainstorming)
+1. Approved design exists (from designing)
 2. Dedicated worktree context exists: `worktree_path`, `branch`, `base_branch`
 3. Scope and success criteria are clear enough to split into testable tasks
 
@@ -25,14 +25,18 @@ If any item is missing, stop and ask for the minimum missing info first.
 
 **Save plans to:** `docs/plans/YYYY-MM-DD-<feature-name>.md`
 
-## Bite-Sized Task Granularity
+## Task Granularity
 
-**Each step is one action (2-5 minutes):**
-- "Write the failing test" - step
-- "Run it to make sure it fails" - step
-- "Implement the minimal code to make the test pass" - step
-- "Run the tests and make sure they pass" - step
-- "Commit" - step
+Each Task is one **deliverable functional module** — a coherent unit of work
+that produces a testable, committable result. Examples:
+
+- "JWT token generation and verification" — one Task
+- "Auth middleware with request injection" — one Task
+- "Protected route integration + OpenAPI update" — one Task
+
+**Anti-pattern:** Do NOT split TDD steps (write test / run test / implement /
+run test / commit) into separate Tasks. The executing agent decides its own
+implementation rhythm.
 
 ## Plan Document Header
 
@@ -47,8 +51,11 @@ If any item is missing, stop and ask for the minimum missing info first.
 
 **Tech Stack:** [Key technologies/libraries]
 
-<!-- workflow-contract:writing-plans.execution_context_header -->
-**Execution Context:** `worktree_path=<...>; branch=<...>; base_branch=<...>`
+<!-- workflow-contract:planning.execution_context_header -->
+**Execution Context:**
+- worktree_path: `<...>`
+- branch: `<...>`
+- base_branch: `<...>`
 
 ---
 ```
@@ -56,52 +63,27 @@ If any item is missing, stop and ask for the minimum missing info first.
 ## Task Structure
 
 ````markdown
-### Task N: [Component Name]
+### Task N: [Module/Feature Name]
 
 **Priority:** P0 | P1 | P2
 **Area:** backend | frontend | both
-<!-- workflow-contract:writing-plans.depends_on_field -->
+<!-- workflow-contract:planning.depends_on_field -->
 **Depends On:** none | Task N[, Task M]
-**Acceptance Criteria:** [Testable, verifiable conditions that define "done" - use semicolons to separate multiple criteria]
-**Review (Dev):** [What to check during development - security, compatibility, logging, performance concerns]
-**Review (Regression):** [What to retest after all tasks are done - cross-task side effects, integration points]
+**Acceptance Criteria:** [Testable, verifiable conditions — semicolons separate multiple]
+**Review Requirements:** [Security, compatibility, performance, regression concerns — what a reviewer should check]
 
 **Files:**
 - Create: `exact/path/to/file.py`
-- Modify: `exact/path/to/existing.py:123-145`
-- Test: `tests/exact/path/to/test.py`
+- Modify: `exact/path/to/existing.py`
 
-**Step 1: Write the failing test**
+**Context:**
+1-3 sentences describing the task boundaries and key design decisions.
+Do NOT include implementation code. Focus on what to build, not how.
 
-```python
-def test_specific_behavior():
-    result = function(input)
-    assert result == expected
-```
-
-**Step 2: Run test to verify it fails**
-
-Run: `pytest tests/path/test.py::test_name -v`
-Expected: FAIL with "function not defined"
-
-**Step 3: Write minimal implementation**
-
-```python
-def function(input):
-    return expected
-```
-
-**Step 4: Run test to verify it passes**
-
-Run: `pytest tests/path/test.py::test_name -v`
-Expected: PASS
-
-**Step 5: Commit**
-
-```bash
-git add tests/path/test.py src/path/file.py
-git commit -m "feat: add specific feature"
-```
+**Test Strategy:**
+- Test file: `tests/exact/path/to/test.py`
+- Test command: `pytest tests/path/ -v`
+- Key scenarios to cover: [list 3-5 key test cases]
 ````
 
 ### Task Metadata Field Guide
@@ -112,8 +94,7 @@ git commit -m "feat: add specific feature"
 | **Area** | Yes | `backend` / `frontend` / `both` (extend per project) |
 | **Depends On** | Yes | `none` for root tasks; otherwise explicit `Task N` references only |
 | **Acceptance Criteria** | Yes | Concrete, testable conditions; use semicolons to list multiple; include key assertions from tests |
-| **Review (Dev)** | Yes | What a reviewer should check during development: security, error handling, naming, edge cases |
-| **Review (Regression)** | Yes | What to retest after all tasks complete: cross-module side effects, integration, performance |
+| **Review Requirements** | Yes | What to check: security, error handling, compatibility, cross-module side effects, regression risks |
 
 ## Dependency Rules
 
@@ -124,20 +105,20 @@ git commit -m "feat: add specific feature"
 
 ## Remember
 - Exact file paths always
-- Complete code in plan (not "add validation")
-- Exact commands with expected output
-- Reference relevant skills with @ syntax
-- DRY, YAGNI, TDD, frequent commits
-- Every Task must have Priority, Area, Depends On, Acceptance Criteria, and Review fields filled
+- Describe **what** to build and **how to verify**, NOT implementation code
+- The executing agent decides HOW to implement — plan only defines boundaries
+- Exact test commands with expected behavior (not expected output verbatim)
+- DRY, YAGNI, frequent commits
+- Every Task must have Priority, Area, Depends On, Acceptance Criteria, and Review Requirements filled
 
 ## Automated Health Gate (Mandatory)
 
 After the plan file is written, run an automatic health check before any commit.
 
-<!-- workflow-contract:writing-plans.health_gate.checker_path -->
+<!-- workflow-contract:planning.health_gate.checker_path -->
 Use the checker path resolution protocol defined in `workflow-health-check/SKILL.md` to resolve `<checker_path>`, then run:
 
-<!-- workflow-contract:writing-plans.health_gate.plan -->
+<!-- workflow-contract:planning.health_gate.plan -->
 Run: `python <checker_path> --mode plan --project-root . --plan docs/plans/YYYY-MM-DD-<feature-name>.md --fail-on error`
 Expected: exit code `0`
 
